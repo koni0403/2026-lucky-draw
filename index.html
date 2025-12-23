@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 愛女孩公益扭蛋機</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/matter-js/0.19.0/matter.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden; /* 防止捲軸出現 */
+            background-color: #f0f2f5;
+            font-family: 'Microsoft JhengHei', sans-serif;
+        }
+        
+        /* 物理畫布容器 */
+        #canvas-container {
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 1;
+        }
+
+        /* UI 介面層 (浮在畫布之上) */
+        .ui-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none; /* 讓點擊穿透到下面的按鈕 */
+            z-index: 10;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        /* 主標題 */
+        .main-title {
+            position: absolute;
+            top: 10%;
+            font-size: 2rem;
+            color: #333;
+            text-shadow: 2px 2px 4px rgba(255,255,255,0.8);
+            text-align: center;
+            pointer-events: auto;
+        }
+
+        /* 抽獎按鈕 */
+        #draw-btn {
+            pointer-events: auto; /* 讓按鈕可以被點擊 */
+            padding: 15px 40px;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #ff6b6b, #ff8e53);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            transition: transform 0.1s;
+            z-index: 20;
+        }
+
+        #draw-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* === 結果視窗 Modal CSS === */
+        #result-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s ease;
+        }
+
+        #result-modal.show {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 20px;
+            width: 90%;
+            max-width: 500px;
+            text-align: center;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            transform: translateY(20px);
+            transition: transform 0.3s ease;
+        }
+        
+        #result-modal.show .modal-content {
+            transform: translateY(0);
+        }
+
+        .level-badge {
+            display: inline-block;
+            padding: 5px 15px;
+            background: #FFD700;
+            color: #856404;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-bottom: 10px;
+        }
+        
+        .fortune-title { color: #ff6b6b; margin: 10px 0; }
+        .fortune-desc { color: #555; line-height: 1.6; }
+        .mission-box {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 5px solid #ff8e53;
+            text-align: left;
+        }
+        .cta-button {
+            display: block;
+            width: 100%;
+            padding: 15px;
+            background: #e60012; /* Love Binti 紅色系 */
+            color: white;
+            text-decoration: none;
+            border-radius: 10px;
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .close-btn {
+            margin-top: 15px;
+            background: none;
+            border: none;
+            color: #999;
+            cursor: pointer;
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="canvas-container"></div>
+
+    <div class="ui-overlay">
+        <h1 class="main-title">2026 愛女孩公益扭蛋機</h1>
+        <button id="draw-btn">💥 啟動重力抽籤 💥</button>
+    </div>
+
+    <div id="result-modal">
+        <div class="modal-content">
+            <span id="r-level" class="level-badge">SSR</span>
+            <h2 id="r-title" class="fortune-title">標題</h2>
+            <p id="r-desc" class="fortune-desc">運勢說明...</p>
+            <div class="mission-box">
+                <strong>💡 幸運任務：</strong><br>
+                <span id="r-mission">任務說明...</span>
+            </div>
+            <a id="r-link" href="#" target="_blank" class="cta-button">立即行動</a>
+            <button class="close-btn" onclick="closeModal()">關閉並重試</button>
+        </div>
+    </div>
+
+
+<script>
+    // ============================================
+    // 1. 資料設定 (Love Binti 運勢文案)
+    // ============================================
+    const fortunesData = [
+        { level: "SSR", title: "🔥 運勢紅火", desc: "你的熱情與動力將在今年達到高峰，辦事效率如火箭般飛升，任何阻礙都會像煙霧般消散。", mission: "守護地球也守護家。一座「減碳爐灶」能減少 60% 砍伐並杜絕濃煙，讓非洲媽媽擁有健康的肺與更多的時間。", link: "https://lihi.cc/7FNyt", btn: "捐助減碳爐灶，為運勢加柴" },
+        { level: "SSR", title: "✨ 自信光芒", desc: "你將散發前所未有的魅力，自信是你最強的濾鏡。", mission: "守護這份自信！一片布衛生棉，能讓女孩不再缺席課堂。", link: "https://lihi.cc/zF5PW", btn: "捐贈布衛生棉材料包" },
+        { level: "SSR", title: "💧 源源不絕", desc: "體力與精神都在巔峰狀態，像活水一樣充滿生命力。", mission: "水是生命之源。在東非，一口井能救活一整個村莊。", link: "https://lihi.cc/hM9vS", btn: "支持水井修復計畫" },
+        { level: "SR", title: "⚓ 一帆風順", desc: "2026 年你的運勢將暢通無阻，過去卡關的難題都將迎刃而解，是推動計畫、大展身手的最佳時機。", mission: "愛心不能塞車！一般捐款能支持龐大的海運與行政費，打通救援的最後一哩路，讓物資順利抵達。", link: "https://lihi.cc/0nEnN", btn: "成為愛女孩的堅強後盾" },
+        { level: "SR", title: "🌿 煩惱清空", desc: "2026 年你擁有極佳的「代謝力」，生活中的小人與負能量都能被你順利排出，轉化為滋養生命的養分。", mission: "衛生不僅是健康，更是尊嚴。支持建設「生態廁所」，讓女孩不再冒險去草叢如廁，更能將廢棄物轉為農田堆肥。", link: "https://lihi.cc/0nEnN", btn: "建立衛生防護網，讓女孩不再害怕如廁" },
+        { level: "R", title: "🕊️ 歲月靜好", desc: "遠離紛擾，身心靈獲得平靜，健康是今年最大的紅利。", mission: "減少非洲孩童因水源不潔而生病的機率，傳遞平安。", link: "https://lihi.cc/hM9vS/", btn: "捐助淨水設備" },
+        { level: "R", title: "🍬 甜蜜日常", desc: "生活中充滿微小但確定的快樂，不用大富大貴也能笑口常開。", mission: "少喝一杯飲料的錢，就能支持一位女孩一個月的衛教資源。", link: "https://lihi.cc/zF5PW", btn: "小額贊助累積福氣" }
+    ];
+
+
+    // ============================================
+    // 2. Matter.js 物理引擎設定
+    // ============================================
+    const Engine = Matter.Engine,
+          Render = Matter.Render,
+          Runner = Matter.Runner,
+          Bodies = Matter.Bodies,
+          Composite = Matter.Composite,
+          Common = Matter.Common,
+          Mouse = Matter.Mouse,
+          MouseConstraint = Matter.MouseConstraint;
+
+    // 初始化引擎
+    const engine = Engine.create();
+    const world = engine.world;
+
+    // 設定畫布大小
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+
+    // 建立渲染器
+    const render = Render.create({
+        element: document.getElementById('canvas-container'),
+        engine: engine,
+        options: {
+            width: width,
+            height: height,
+            wireframes: false, // 設為 false 才能看到顏色
+            background: 'transparent'
+        }
+    });
+
+    Render.run(render);
+    const runner = Runner.create();
+    Runner.run(runner, engine);
+
+    // --- 建立邊界 (地板、牆壁) ---
+    const wallThickness = 60;
+    let ground, leftWall, rightWall, ceiling;
+
+    function createBoundaries() {
+        // 移除舊邊界 (用於視窗縮放時重繪)
+        if(ground) Composite.remove(world, [ground, leftWall, rightWall, ceiling]);
+
+        ground = Bodies.rectangle(width/2, height + wallThickness/2, width, wallThickness, { isStatic: true, render: { visible: false } });
+        leftWall = Bodies.rectangle(-wallThickness/2, height/2, wallThickness, height, { isStatic: true, render: { visible: false }});
+        rightWall = Bodies.rectangle(width + wallThickness/2, height/2, wallThickness, height, { isStatic: true, render: { visible: false }});
+        ceiling = Bodies.rectangle(width/2, -wallThickness/2, width, wallThickness, { isStatic: true, render: { visible: false } });
+
+        Composite.add(world, [ground, leftWall, rightWall, ceiling]);
+    }
+    createBoundaries();
+
+    // --- 建立扭蛋球 ---
+    const colors = ['#FF6B6B', '#4ECDC4', '#FFE66D', '#FF8E53', '#A7D7C5'];
+    let balls = [];
+
+    function createBalls() {
+        for (let i = 0; i < 40; i++) { // 產生 40 顆球
+            const radius = Common.random(20, 35); // 球的大小隨機
+            const ball = Bodies.circle(
+                Common.random(wallThickness, width - wallThickness), // x 位置
+                Common.random(wallThickness, height/2), // y 位置 (一開始在跟上面)
+                radius, 
+                {
+                    restitution: 0.8, // 彈力 (0-1，越大越彈)
+                    friction: 0.05,
+                    render: {
+                        fillStyle: Common.choose(colors), // 隨機顏色
+                        strokeStyle: 'white',
+                        lineWidth: 2
+                    }
+                }
+            );
+            balls.push(ball);
+            Composite.add(world, ball);
+        }
+    }
+    createBalls();
+
+    // --- 加入滑鼠互動 (讓使用者可以撥弄球) ---
+    const mouse = Mouse.create(render.canvas);
+    const mouseConstraint = MouseConstraint.create(engine, {
+        mouse: mouse,
+        constraint: {
+            stiffness: 0.2,
+            render: { visible: false }
+        }
+    });
+    Composite.add(world, mouseConstraint);
+    render.mouse = mouse; // 修正 Matter.js 的滑鼠對應
+
+
+    // ============================================
+    // 3. 互動邏輯控制
+    // ============================================
+    const drawBtn = document.getElementById('draw-btn');
+    const resultModal = document.getElementById('result-modal');
+    let isDrawing = false;
+
+    // 點擊抽獎按鈕
+    drawBtn.addEventListener('click', function() {
+        if (isDrawing) return; // 防止重複點擊
+        isDrawing = true;
+        drawBtn.disabled = true;
+        drawBtn.innerText = "🤞 祈福中...";
+
+        // 1. 施加爆炸力! (Antigravity Effect)
+        balls.forEach(ball => {
+            // 給每個球一個隨機向上的巨大力量
+            Matter.Body.applyForce(ball, ball.position, {
+                x: Common.random(-0.05, 0.05) * ball.mass, // 輕微左右隨機
+                y: Common.random(-0.15, -0.25) * ball.mass  // 強力向上
+            });
+        });
+
+        // 2. 等待物理效果結束後顯示結果
+        setTimeout(() => {
+            showResult();
+            isDrawing = false;
+            drawBtn.disabled = false;
+            drawBtn.innerText = "💥 再次啟動 💥";
+        }, 2500); // 2.5秒後開獎
+    });
+
+    // 顯示結果
+    function showResult() {
+        // 隨機抽選一個運勢
+        const result = fortunesData[Math.floor(Math.random() * fortunesData.length)];
+
+        // 更新 DOM
+        document.getElementById('r-level').innerText = result.level;
+        // 根據等級改變 Badge 顏色
+        const badge = document.getElementById('r-level');
+        badge.style.backgroundColor = result.level === 'SSR' ? '#FFD700' : (result.level === 'SR' ? '#C0C0C0' : '#CD7F32');
+        badge.style.color = result.level === 'SSR' ? '#856404' : '#FFFFFF';
+
+        document.getElementById('r-title').innerText = result.title;
+        document.getElementById('r-desc').innerText = result.desc;
+        document.getElementById('r-mission').innerText = result.mission;
+        const linkBtn = document.getElementById('r-link');
+        linkBtn.href = result.link;
+        linkBtn.innerText = "❤️ " + result.btn;
+
+        // 顯示視窗
+        resultModal.classList.add('show');
+    }
+
+    // 關閉視窗
+    function closeModal() {
+        resultModal.classList.remove('show');
+    }
+
+    // 處理視窗大小改變 (RWD)
+    window.addEventListener('resize', function() {
+        width = window.innerWidth;
+        height = window.innerHeight;
+        render.canvas.width = width;
+        render.canvas.height = height;
+        // 重建邊界以適應新視窗
+        createBoundaries();
+    });
+
+</script>
+</body>
+</html>
